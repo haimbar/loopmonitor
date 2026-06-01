@@ -9,7 +9,7 @@ tags:
   - loop monitoring
 authors:
   - name: Haim Bar
-    orcid: 0000-0000-0000-0000   # replace with your ORCID
+    orcid: 0000-0002-5496-9699
     affiliation: 1
 affiliations:
   - name: Department of Statistics, University of Connecticut, USA
@@ -111,11 +111,10 @@ $ ipc notify 12345 "loss < 0.05"   # desktop alert when condition is met
 The R interface provides drop-in equivalents (`ipc_for`, `ipc_while`,
 `ipc_repeat`, `ipc_track`, `ipc_get`) using the same `ipc` CLI.  The Python
 package is available on PyPI (`pip install loopmonitor`); the R package is
-available on CRAN (`install.packages("loopmonitor")`).
+installed from GitHub (`devtools::install_github("haimbar/loopmonitor-r")`).
+Full documentation for each package is available in the
+[Python README](https://github.com/haimbar/loopmonitor#readme) and the
+[R README](https://github.com/haimbar/loopmonitor-r#readme).
 
-# Acknowledgements
-
-The author thanks the University of Connecticut Department of Statistics for
-supporting this work.
 
 # References
