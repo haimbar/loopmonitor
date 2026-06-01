@@ -49,14 +49,53 @@ as TensorBoard [@tensorboard], Weights & Biases [@wandb], and MLflow [@mlflow]
 provide rich visualizations and persistent run history, but require the analyst
 to configure logging *before* the run and to connect to a local or
 cloud-hosted server.  Neither class of tools provides a way to stop a loop
-cleanly, inject a new parameter value, or save a snapshot from outside the
+cleanly, change a parameter value, or save a snapshot from outside the
 running process.
 
-`loopmonitor` fills this gap with a *minimal instrumentation, maximal control*
+`loopmonitor` fills this gap with a *minimal instrumentation* and *maximal control*
 design.  The target audience is anyone who runs long iterative computations in
 Python or R on a local workstation or HPC cluster: statisticians running MCMC
 chains, machine-learning practitioners tuning neural networks, and researchers
 conducting large-scale simulation studies.
+
+Table 1 summarises how `loopmonitor` compares with the most commonly used
+alternatives across the capabilities that matter most for interactive loop
+control.
+
+| Feature | loopmonitor | TensorBoard | Weights & Biases | tqdm |
+|:---------------------------------------------|:--------------:|:--------------:|:--------------:|:--------------:|
+| No setup / no account | $\checkmark$ | $\checkmark$ | $\times$¹ | $\checkmark$ |
+| No cloud / all local | $\checkmark$ | $\checkmark$ | $\times$ | $\checkmark$ |
+| Works with any Python code | $\checkmark$ | partial² | partial² | $\checkmark$ |
+| Works with R code | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| On-demand status query | $\checkmark$ | $\times$³ | $\times$³ | $\times$ |
+| Live streaming (`tail`) | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Graceful loop exit (`continue`) | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Graceful program stop (`break`) | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Mid-run value injection (`set`) | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Pause / resume process | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Desktop notifications | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Mid-run snapshots (`checkpoint`) | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Call stack inspection | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Memory usage query | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Persistent metric history | $\times$^4^ | $\checkmark$ | $\checkmark$ | $\times$ |
+| Web UI / experiment comparison | $\times$ | $\checkmark$ | $\checkmark$ | $\times$ |
+
+: Capability comparison with related tools. \label{tab:comparison}
+
+¹ Weights & Biases requires a free account and an internet connection for its
+cloud-based logging service.
+
+² TensorBoard and W&B work best when their logging APIs are called at every
+step; adding them to arbitrary code requires restructuring around their
+callback model.
+
+³ Both tools display currently logged values in a browser, but only for runs
+that were instrumented with their APIs *before* they started.  `ipc peek` can
+query any `ipc_range`-instrumented loop at any time, including after the fact.
+
+^4^ `loopmonitor` retains only the most recent state snapshot.  For a full
+per-iteration history, log to a file inside the loop or use TensorBoard/W&B.
 
 # Implementation
 
@@ -68,7 +107,12 @@ Per-iteration overhead is limited to a single JSON state-file write (tens of
 microseconds), negligible for the MCMC steps and mini-batch updates that
 `loopmonitor` targets.  A persistent write-end file descriptor prevents
 spurious end-of-file between CLI invocations, following standard POSIX
-practice [@stevens2013].
+practice [@stevens2013].  Figure 1 illustrates the full message flow for a
+`peek` command.
+
+![Message flow for the Python backend.  The CLI writes atomically to the named
+FIFO and signals the process; the signal handler wakes, reads all queued
+commands, and returns control to the loop body.](fig1_architecture.pdf){#fig:arch}
 
 **R backend.**  R's batch mode (`Rscript`) repurposes `SIGUSR1` for its own
 save-and-quit handler, making signal-based delivery unreliable from user code.
@@ -84,9 +128,14 @@ TOCTOU (time-of-check to time-of-use) window; and safe value parsing (`ast.liter
 AST-walking `.safe_eval` in R) that accepts only literal constants and rejects
 function calls, attribute access, and import statements.
 
+**Testing.**  The Python package is distributed with 126 pytest tests across ten
+modules, covering FIFO lifecycle and permissions, signal handler installation
+and dispatch, all 14 CLI commands, registry operations, state serialization,
+safe-value parsing, and multiprocess isolation.
+
 # Usage
 
-A Python training loop is instrumented with one import and one keyword change:
+A Python training loop is instrumented with one import and one function-name change:
 
 ```python
 from loopmonitor import ipc_range
@@ -112,9 +161,67 @@ The R interface provides drop-in equivalents (`ipc_for`, `ipc_while`,
 `ipc_repeat`, `ipc_track`, `ipc_get`) using the same `ipc` CLI.  The Python
 package is available on PyPI (`pip install loopmonitor`); the R package is
 installed from GitHub (`devtools::install_github("haimbar/loopmonitor-r")`).
+
+Table 2 lists the full set of `ipc` commands available in both the Python and
+R packages.
+
+| Command | Description |
+|:-----------------------------|:--------------------------------------------------------------|
+| `ipc list` | List all registered processes with PID, label, and start time |
+| `ipc peek <pid>` | Print iteration, elapsed time, ETA, and tracked values |
+| `ipc tail <pid>` | Stream live status updates every 2 s (Ctrl-C to stop) |
+| `ipc plot <pid>` | Display a matplotlib trace of all tracked sequences |
+| `ipc set <pid> k=v` | Inject a value readable via `step.get()` without stopping |
+| `ipc continue <pid>` | Exit the loop after the current iteration; script continues |
+| `ipc break <pid>` | Stop the program after the current iteration; save JSON snapshot |
+| `ipc pause <pid>` | Suspend the process (SIGSTOP / OS-level freeze) |
+| `ipc resume <pid>` | Resume a suspended process (SIGCONT) |
+| `ipc notify <pid> "expr"` | Send a desktop alert when a condition on tracked values is met |
+| `ipc checkpoint <pid>` | Save a timestamped JSON snapshot without stopping |
+| `ipc stack <pid>` | Print the Python call stack to the process stdout |
+| `ipc memory <pid>` | Print resident-set-size (RSS) memory usage |
+| `ipc clean` | Remove stale registry entries after abnormal termination |
+
+: Full `ipc` command reference. \label{tab:commands}
+
 Full documentation for each package is available in the
 [Python README](https://github.com/haimbar/loopmonitor#readme) and the
 [R README](https://github.com/haimbar/loopmonitor-r#readme).
 
+# Limitations
+
+**POSIX only.**  `loopmonitor` relies on named FIFOs and `SIGUSR1`, both of
+which are POSIX features unavailable on native Windows.  The package works on
+Windows through WSL (Windows Subsystem for Linux); `ipc plot` additionally
+requires a display (WSLg on Windows 11, or a third-party X server on older
+setups).
+
+**One monitored loop per process.**  Nesting two `ipc_range` calls is not
+supported; the inner loop would overwrite the outer signal handler.
+Sequential calls—finishing one loop before starting the next—work correctly.
+
+**State is a snapshot, not a history.**  `loopmonitor` stores only the most
+recent state.  `ipc break` and `ipc checkpoint` save the state at the moment
+the command is issued; they do not replay the full per-iteration history.  For
+complete metric logging, write values to a file inside the loop or combine
+`loopmonitor` with a dedicated experiment-tracking tool.
+
+**`ipc plot` requires a display.**  The matplotlib window opens in the
+process's display environment (`$DISPLAY` on Linux, the macOS window server on
+macOS).  Running over SSH without X forwarding will raise a matplotlib backend
+error.
+
+**`ipc pause` / `ipc resume` do not work in interactive Python sessions.**
+Sending SIGSTOP to a REPL that is the foreground job of a terminal causes the
+shell to reclaim that terminal; SIGCONT then resumes the process in the
+background.  `ipc pause` prints a warning when it detects this situation.  For
+interactive sessions, use Ctrl-Z and `fg` in the session's own terminal.
+
+# AI usage disclosure
+
+The package was designed and implemented by the author. Claude Sonnet 4.6
+(via Claude Code) was used to improve and test the Python and R packages,
+write detailed documentation, and to eliminate security vulnerabilities.
+It was also used to improve this paper.
 
 # References

@@ -22,3 +22,7 @@ venv/
 # JOSS paper build artifacts
 joss/paper.pdf
 joss/paper.crossref
+
+# JOSS figure: keep fig1_architecture.py (source) and fig1_architecture.pdf (final)
+# SVG is a generated duplicate of the PDF and can be regenerated from the script
+joss/fig1_architecture.svg
