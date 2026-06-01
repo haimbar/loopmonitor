@@ -26,7 +26,7 @@ running loop from a second terminal, without modifying the program while it
 runs and without connecting to any cloud service.  The analyst instruments a
 loop with a single function call; the `ipc` command-line tool then supports
 querying current status, streaming live updates, plotting tracked quantities,
-injecting new parameter values, saving timestamped checkpoints, and stopping
+changing parameter values during runtime, saving timestamped checkpoints, and stopping
 the loop cleanly—all while the computation continues uninterrupted between
 commands.
 
@@ -34,7 +34,7 @@ commands.
 
 Long-running iterative procedures—Markov chain Monte Carlo (MCMC) samplers
 [@gelman1992], stochastic optimizers, simulation studies, cross-validation
-sweeps—are effectively opaque once launched.  The standard responses are to
+sweeps—are effectively opaque once launched.  The standard practices are to
 add `print` statements *before* the run (requiring a restart if anything was
 forgotten), to tail a pre-configured log file, or to wait and hope.  None of
 these options allows the analyst to *react* to what the loop is doing: to stop
@@ -80,7 +80,7 @@ rename-before-read) at each iteration boundary.  The user-visible interface and
 **Security.**  Three independent layers protect against interference on shared
 machines: owner-only directory and FIFO permissions; symlink-safe file opens
 (`O_NOFOLLOW` with post-open `fstat` ownership verification) that close the
-TOCTOU window; and safe value parsing (`ast.literal_eval` in Python; an
+TOCTOU (time-of-check to time-of-use) window; and safe value parsing (`ast.literal_eval` in Python; an
 AST-walking `.safe_eval` in R) that accepts only literal constants and rejects
 function calls, attribute access, and import statements.
 
