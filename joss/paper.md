@@ -41,6 +41,8 @@ these options allows the analyst to *react* to what the loop is doing: to stop
 early when convergence is clear, to adjust a parameter when divergence is
 detected, or to save a snapshot before stepping away from the machine.
 
+# State of the field
+
 Existing tools address parts of this problem but not all of it.  Progress bars
 (`tqdm` [@tqdm] in Python; `progressr` [@progressr] in R) report completion
 percentage and estimated time remaining, but offer no mechanism for inspecting
@@ -97,7 +99,7 @@ query any `ipc_range`-instrumented loop at any time, including after the fact.
 ^4^ `loopmonitor` retains only the most recent state snapshot.  For a full
 per-iteration history, log to a file inside the loop or use TensorBoard/W&B.
 
-# Implementation
+# Software design
 
 **Python backend.**  When `ipc_range()` starts, it creates a named FIFO in
 `~/.ipc/` with owner-only permissions (mode `0600`) and installs a `SIGUSR1`
