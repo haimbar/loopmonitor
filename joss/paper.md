@@ -221,7 +221,7 @@ interactive sessions, use Ctrl-Z and `fg` in the session's own terminal.
 
 The package was designed and implemented by the author. Claude Sonnet 4.6
 (via Claude Code) was used to improve and test the Python and R packages,
-write detailed documentation, and to eliminate security vulnerabilities.
+write detailed documentation, and eliminate security vulnerabilities.
 It was also used to improve this paper.
 
 # References
