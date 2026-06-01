@@ -18,3 +18,7 @@ venv/
 
 # Editor
 .DS_Store
+
+# JOSS paper build artifacts
+joss/paper.pdf
+joss/paper.crossref
