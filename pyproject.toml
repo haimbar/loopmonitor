@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loopmonitor"
+version = "0.1.2"
+description = "On-demand status queries and graceful loop control for long-running Python programs"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [
+    { name = "Haim Bar", email = "haim.bar@uconn.edu" },
+]
+keywords = [
+    "loop", "control", "ipc", "monitoring", "debugging",
+    "long-running", "training", "mcmc", "progress",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: System :: Monitoring",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = ["matplotlib>=3.5"]
+
+[project.urls]
+Homepage      = "https://github.com/haimbar/loopmonitor"
+Repository    = "https://github.com/haimbar/loopmonitor.git"
+Documentation = "https://github.com/haimbar/loopmonitor#readme"
+Issues        = "https://github.com/haimbar/loopmonitor/issues"
+
+[project.scripts]
+ipc = "loopmonitor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["loopmonitor*"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# -v: show each test name
+# --tb=short: compact tracebacks
+addopts = "-v --tb=short"
