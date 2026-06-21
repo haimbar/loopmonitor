@@ -1,16 +1,17 @@
 # loopmonitor
 
-**On-demand status queries and graceful loop control for long-running Python programs.**
+**On-demand status queries and graceful loop control for long-running Python and R programs.**
 
-`loopmonitor` lets you inspect or steer a running Python program from a second terminal — without modifying the program while it runs, restarting it, or connecting to a cloud service. You add one line to your loop; everything else is controlled from the command line.
+`loopmonitor` lets you inspect or steer a running program from a second terminal (or from an AI assistant) — without modifying the program while it runs, restarting it, or connecting to a cloud service. You add one line to your loop; everything else is controlled from the command line or via the MCP server.
 
 ---
 
 ## Table of contents
 
 1. [Installation](#installation)
-2. [The core idea](#the-core-idea)
-3. [Instrumenting your code](#instrumenting-your-code)
+2. [MCP server (AI assistant integration)](#mcp-server-ai-assistant-integration)
+3. [The core idea](#the-core-idea)
+4. [Instrumenting your code](#instrumenting-your-code)
    - [Basic usage](#basic-usage)
    - [Tracking values](#tracking-values)
    - [Wrapping an existing iterable](#wrapping-an-existing-iterable)
@@ -51,6 +52,51 @@ pip install loopmonitor
 `loopmonitor` requires Python 3.9 or later and runs on **Linux and macOS** (any POSIX system that supports named FIFOs and `SIGUSR1`). Native Windows is not supported, but it works on Windows via WSL — see [Limitations](#limitations).
 
 The only required dependency is **matplotlib** (used by `ipc plot`). Everything else is standard library.
+
+---
+
+## MCP server (AI assistant integration)
+
+`loopmonitor` ships an [MCP](https://modelcontextprotocol.io) server (`mcp_server.py`) that exposes three tools to Claude and other MCP-compatible AI assistants:
+
+| Tool | Description |
+|---|---|
+| `list_loops` | List all processes registered with loopmonitor — PID, language, label, alive status |
+| `peek_loop` | Return current iteration, elapsed time, ETA, and tracked values for one or more loops |
+| `control_loop` | Send `continue`, `break`, `checkpoint`, `pause`, `resume`, or `set key=value` to a loop |
+
+`target` in `peek_loop` and `control_loop` accepts a PID, `"all"`, or a label glob (e.g. `"train-*"`).
+
+### Setup
+
+Add to `~/.claude/settings.json` alongside the [talk2stat](https://github.com/haimbar/llm_talk2stat) server:
+
+```json
+{
+  "mcpServers": {
+    "talk2stat": {
+      "command": "python3",
+      "args": ["/absolute/path/to/llm_talk2stat/mcp_server.py"]
+    },
+    "loopmonitor": {
+      "command": "python3",
+      "args": ["/absolute/path/to/loopmonitor/mcp_server.py"]
+    }
+  }
+}
+```
+
+The loopmonitor MCP server requires the `mcp` Python package:
+
+```bash
+pip install mcp
+```
+
+Restart Claude Code. The three tools above will be available automatically in every conversation. Claude will call `peek_loop` to check on long-running loops and `control_loop` to steer them without leaving the conversation.
+
+### R support
+
+For R, use the [loopmonitor-r](https://github.com/haimbar/loopmonitor-r) package, which provides `ipc_for`, `ipc_while`, `ipc_repeat`, and `ipc_track`. The same MCP server tools work for both Python and R loops — they read from the shared `~/.ipc/` state directory.
 
 ---
 
@@ -951,7 +997,7 @@ You can then inspect the JSON file to see exactly which parameters had been test
 | **No setup / no account** | ✓ | ✓ | requires account | ✓ |
 | **No cloud / all local** | ✓ | ✓ | ✗ (SaaS) | ✓ |
 | **Works with any Python code** | ✓ | partial¹ | partial¹ | ✓ |
-| **Works with R code** | planned | ✗ | ✗ | ✗ |
+| **Works with R code** | ✓ ([loopmonitor-r](https://github.com/haimbar/loopmonitor-r)) | ✗ | ✗ | ✗ |
 | **On-demand status query** | ✓ | ✗² | ✗² | ✗ |
 | **Live streaming (`tail`)** | ✓ | ✗ | ✗ | ✗ |
 | **Graceful loop exit (continue)** | ✓ | ✗ | ✗ | ✗ |

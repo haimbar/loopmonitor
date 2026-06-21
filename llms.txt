@@ -1,0 +1,116 @@
+# loopmonitor
+
+> MCP server for querying and controlling long-running Python and R loops from an AI assistant.
+
+`loopmonitor` instruments loops with drop-in replacements (`ipc_range` in Python; `ipc_for`, `ipc_while`, `ipc_repeat` in R). Each instrumented loop registers itself in `~/.ipc/registry.json` and writes state to `~/.ipc/<pid>.state.json` after every iteration. The MCP server reads these files and sends commands via FIFO (Python) or command file (R).
+
+**Companion server:** [llm_talk2stat](https://github.com/haimbar/llm_talk2stat) provides persistent R/Python/Julia sessions. The two MCP servers are independent — configure both in `settings.json`.
+
+## Source files
+
+- [mcp_server.py](mcp_server.py): MCP server entry point — `list_loops`, `peek_loop`, `control_loop`.
+- [loopmonitor/](loopmonitor/): Python package. Key modules: `range.py` (ipc_range), `_registry.py`, `_state.py`, `_report.py`, `cli.py` (ipc CLI).
+- [examples/](examples/): Worked Python examples.
+
+R package: [loopmonitor-r](https://github.com/haimbar/loopmonitor-r) — provides `ipc_for`, `ipc_while`, `ipc_repeat`, `ipc_track`, `ipc_get`.
+
+## MCP tools
+
+### list_loops
+List all processes registered with loopmonitor.
+
+- **Input:** none
+- **Output:** formatted table with columns PID, ALIVE, LANG, LABEL, STARTED. Returns `"No processes registered with loopmonitor."` when the registry is empty.
+- **Note:** includes dead processes (ALIVE = no) so recently finished loops are visible. Call `ipc clean` or `control_loop` with `clean` is not supported — use the `ipc clean` CLI command to remove stale entries.
+
+### peek_loop
+Return the current status of one or more monitored loops.
+
+- **Input:** `target` — PID (string), `"all"`, or a label glob (e.g. `"train-*"`)
+- **Output:** for each matched process, a formatted status block:
+  ```
+  [loopmonitor] PID 12345  iter 3421/10000  (34.2%)
+           elapsed 08:37  ETA 16:35
+           loss=0.3847  accuracy=0.8821
+  ```
+  Multiple processes are separated by blank lines.
+- **Returns** `"No alive loopmonitor processes matching '<target>'."` when no match.
+- **Note:** reads the state file directly — does not signal the process. The state is as fresh as the last `step.track()` / `ipc_track()` call.
+
+### control_loop
+Send a control command to one or more monitored loops.
+
+- **Input:** `target` (same as peek_loop), `command` — one of:
+  - `continue` — exit the loop after the current iteration; code after the loop runs normally
+  - `break` — stop the script after the current iteration and save a JSON snapshot
+  - `checkpoint` — save a JSON snapshot without stopping
+  - `pause` — suspend the process (SIGSTOP)
+  - `resume` — resume a suspended process (SIGCONT)
+  - `set key=value` — inject a value readable by `step.get(key)` / `ipc_get(key)` in the loop
+- **Output:** one line per matched process: `"PID 12345 (label): 'command' sent."` or an error.
+- **Routing:** Python loops receive commands via FIFO + SIGUSR1; R loops via a polled command file. The MCP server routes automatically based on the `language` field in the registry entry.
+
+## How to instrument loops
+
+### Python
+```python
+from loopmonitor import ipc_range
+
+for step in ipc_range(n, label="descriptive-name"):
+    # ... body ...
+    step.track(loss=loss, accuracy=acc)   # values shown by peek_loop
+    lr = step.get("lr", default=0.01)    # read values injected by control_loop set
+```
+
+`ipc_range` accepts any iterable (not just integers). If the iterable has `__len__`, ETA is computed automatically.
+
+### R
+```r
+library(loopmonitor)
+
+ipc_for(i, 1:n, {
+  # ... body ...
+  ipc_track(loss = loss, accuracy = acc)
+  lr <- ipc_get("lr", default = 0.01)
+}, label = "descriptive-name")
+
+# Also available:
+ipc_while(condition, { ... }, label = "...")
+ipc_repeat({ ...; if (done) break }, label = "...")
+```
+
+`break`, `next`/`continue`, and loop variables all work exactly as in native loops.
+
+## State file format
+
+`~/.ipc/<pid>.state.json`:
+```json
+{
+  "pid": 12345,
+  "iteration": 3421,
+  "total": 10000,
+  "elapsed_sec": 517.3,
+  "eta_sec": 995.6,
+  "tracked": { "loss": 0.3847, "accuracy": 0.8821 },
+  "updated": "2026-06-21T14:30:22.000000+00:00"
+}
+```
+
+`total` and `eta_sec` are `null` for infinite/unknown-length iterables.
+
+## Usage pattern for AI assistants
+
+1. Use `list_loops` to discover what's running before `peek_loop` or `control_loop`.
+2. `peek_loop("all")` gives a quick overview when there are multiple loops.
+3. `peek_loop` is read-only and safe to call repeatedly — it does not signal the process.
+4. Prefer `control_loop(..., "continue")` over `"break"` when the loop has made useful progress — `continue` lets the rest of the script run (evaluation, saving results); `break` calls `sys.exit(0)`.
+5. `control_loop(..., "checkpoint")` is always safe — it saves state without interrupting the loop.
+6. `control_loop(..., "set key=value")` can adjust hyperparameters (e.g. learning rate) while the loop runs, if the loop reads them via `step.get()` / `ipc_get()`.
+7. When writing new loops for the user, always use the loopmonitor drop-in replacements so the loop is immediately monitorable.
+
+## Error conditions
+
+- `peek_loop` / `control_loop` with no matching alive process → `"No alive loopmonitor processes matching '<target>'."`
+- `control_loop` with an unrecognised command → `"[ERROR] Unknown command '<cmd>'. Valid: break, checkpoint, continue, pause, resume, set"`
+- `control_loop` pause/resume with a dead PID → `"PID <n> (<label>): ERROR — [Errno 3] No such process"`
+- `control_loop` send to a Python process with no FIFO → `"PID <n> (<label>): ERROR — could not deliver command."` (process may have exited between list_loops and control_loop)
